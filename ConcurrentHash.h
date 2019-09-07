@@ -17,9 +17,6 @@
  *   Queue本身,包括元信息和Buffer(Buffer应该是可以替换的,因此可以考虑单独实现一个PagePool来解决(分桶,每个桶可以用原子变量来实现))
  *   Queue本身是直接分配的,算是new出来的,这里可以考虑用static的方式先分配好
  *
- *   可以有个思路减少开销:
- *      第一是降低hash本身的开销,用自制的hash代替std的unordered_map
- *      第二就是增加字符串的计算, 可以考虑SIMD
  * */
 
 namespace CONCURRENT{
@@ -28,19 +25,6 @@ namespace CONCURRENT{
     uint32_t MurmurHash2 ( const void * key, int len,uint32_t seed);
 
 
-
-    /*
- * 这个作用是用来嵌入到Queue这个数据结构里面的
- *
- * */
-
-
-
-    /* hashTable
-      *
-      *
-      *
-      * */
 
     class HashTable
     {
@@ -62,9 +46,6 @@ namespace CONCURRENT{
             HashNode node;
             char buf[32];
         };
-
-
-
 
 
     public:
@@ -121,15 +102,6 @@ namespace CONCURRENT{
 
 
 
-
-
-    // Value是QueueStore*
-    /*
-     * 是否可以使用一个uint64来计算保证不冲突???
-     * 一个策略是给 QueueStore本身绑定上一个string,如果这个string也冲突,那么就再计算一次hash
-     * 实际上可以考虑不用,因为一个seg才1000个Queue,实际上会冲突的应该不多才对
-     *
-     * */
     template <class Value>
     class Segment{
         public:
@@ -263,13 +235,6 @@ namespace CONCURRENT{
 
         return h;
     }
-
-
-
-
 };
-
-
-
 
 #endif //QUEUESTORE_CONCURRENTHASH_H
