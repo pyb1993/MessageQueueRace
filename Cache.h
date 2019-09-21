@@ -19,10 +19,10 @@ class PageCache {
 public:
 
     // therad safe,需要在锁的保护下
-    void updateVersion();
+    void updateVersion(uint64_t);
     static PageCache* allocPageCache();
     //只分配ReadCache,避免和WriteCache发生冲突
-    static PageCache* allocReadCache();
+    static PageCache* allocReadCache(uint64_t);
 
 
     // version用来确保当前是第几个版本,这样用来分析是否失效,每次获取这个pageCache都必须要增加一次

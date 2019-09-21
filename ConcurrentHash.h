@@ -36,8 +36,9 @@ namespace CONCURRENT{
             void *value = nullptr; // 指向实际的数据
             HashNode* next = nullptr;	// 这个hash_node上面的链表
             size_t hash; // 计算出来的hash值
+            uint16_t len;
 
-            HashNode(char* key_, void* value_, size_t hash_, HashNode* next_): key(key_), value(value_), next(next_), hash(hash_){}
+            HashNode(char* key_, void* value_, size_t hash_, HashNode* next_, int len_): key(key_), value(value_), next(next_), hash(hash_), len(len_){}
             HashNode(): key(nullptr), value(nullptr), next(nullptr), hash(0){}
         };
 
@@ -53,7 +54,7 @@ namespace CONCURRENT{
             // 尝试了静态分配缓存进行优化,但是几乎没有效果(特别是访问顺序是按照分配的方式来的,如果在每一个table内部进行分配,实际上会导致cache不命中)
             char* key_cp = new char[len + 1];
             memcpy(key_cp, key, len);
-            return new HashNode(key_cp, value, hash, next);
+            return new HashNode(key_cp, value, hash, next, len);
         }
 
         void* find(const char* key, int len, uint32_t prefixHash){
@@ -62,7 +63,7 @@ namespace CONCURRENT{
             HashNode* node = table[(hash >> 12) & 255];
 
             while (node != nullptr){
-                if(node->hash == hash && memcmp(node->key, key, len) == 0){
+                if(node->hash == hash && node->len == len && memcmp(node->key, key, len) == 0){
                     return node->value;
                 }else{
                     node = node->next;
@@ -104,26 +105,26 @@ namespace CONCURRENT{
 
     template <class Value>
     class Segment{
-        public:
-            using Key = std::string ;
-            using KeyRef =  const Key&;
-            //using Hash = std::unordered_map<Key , Value>;
-            using Hash = HashTable;
+    public:
+        using Key = std::string ;
+        using KeyRef =  const Key&;
+        //using Hash = std::unordered_map<Key , Value>;
+        using Hash = HashTable;
 
-            using Str = std::string;
-            SpinLock lock; // 这里用一个最简单的自旋锁来处理即可,因为冲突的机率比较小
-            Hash map;
+        using Str = std::string;
+        SpinLock lock; // 这里用一个最简单的自旋锁来处理即可,因为冲突的机率比较小
+        Hash map;
 
-            Value get(KeyRef key, uint32_t hash){
-                auto value = map.find(key.c_str(), key.length(), hash);
-                return static_cast<Value>(value);
-            }
+        Value get(KeyRef key, uint32_t hash){
+            auto value = map.find(key.c_str(), key.length(), hash);
+            return static_cast<Value>(value);
+        }
 
-            // 暂时不考虑并发写的情况,如果要考虑,那么
-            void put( KeyRef key, Value val, uint32_t hash){
-                //map[key] = val;
-                map.put(key.c_str(), key.length(), val, hash);
-            }
+        // 暂时不考虑并发写的情况,如果要考虑,那么
+        void put( KeyRef key, Value val, uint32_t hash){
+            //map[key] = val;
+            map.put(key.c_str(), key.length(), val, hash);
+        }
 
 
     };

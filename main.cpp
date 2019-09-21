@@ -9,21 +9,28 @@
 #include "QueueStore.h"
 
 /*
- * 测试concurrentHash的性能如何
+ * 1亿条消息,sprintf 需要35s写入, 13sn rand, consume 9s
+ * 10亿条消息, spirntf需要389s, rand 77s, consume 132.74
+ *
+ * 1亿条消息,不用sp, 15s.13s rand, 7.8s consume
+ * 10亿条消息, 不用sp, 134s,  rand 22s, consume 68s
+ *
+ *
+ *
  *
  * */
 
 // 消除sprintf put 100s左右
 // 10亿条消息 put 386s左右, rand 50s左右 range 98s左右
-int msgNum = 1 * 100000000;
+int msgNum = 10 * 100000000;
 //队列的数量 100w
-const int queueNum = 100000; // 100条消息
+const int queueNum = 1000000; // 100条消息
 
 //每个队列发送的数据量
 const int queueMsgNum = msgNum / queueNum;
 
 //正确性检测的次数
-const int checkNum = 1000000; // 46s左右
+const int checkNum = 1000000;
 //消费阶段的总队列数量，20%
 const int checkQueueNum = 200000;
 //发送的线程数量
@@ -119,7 +126,7 @@ void CheckSingleMemBlock(int queueIndex, int num, const MemBlock &memBlock) {
     if (memcmp(memBlock.ptr, getString(num).c_str() , msgSize) != 0) {
         printf("[##ERROR##] check message content error, Queue:%d QueueIndex:%d %s != %s\n", queueIndex, num,
                readlMessage, std::string((const char *)memBlock.ptr, memBlock.size).c_str());
-        if(cnt++ == 3){
+        if(cnt++ == 15){
             _exit(1);
         }
         return;

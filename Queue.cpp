@@ -43,7 +43,7 @@ Queue::Vector<MemBlock> Queue::get(uint32_t offset, uint32_t number) {
      * 可以考虑针对PageCache加锁,这样锁的粒度会小很多,先进行一次查询,如果查询中了就不需加锁了,
      * 因为pageIndex本身在变化,所以需要主要可能会冲突,这个查询过程是需要加锁的
      * */
-
+    auto of = offset;
     auto first_page_idx = searchIndex(offset);
     if(first_page_idx == -1 || static_cast<size_t>(first_page_idx) == paged_message_indices_.size()){
         return Vector<MemBlock>();
@@ -61,28 +61,43 @@ Queue::Vector<MemBlock> Queue::get(uint32_t offset, uint32_t number) {
     PageCache* page;
     for (size_t page_idx = first_page_idx; page_idx <= static_cast<size_t>(write_pageidx); ++page_idx) {
         auto& index = paged_message_indices_[page_idx];
-
         while (true) {
             page = index->page();
 
+
+            /*
+             * 先获取了一个page1,此时Page1代表最后一个元素
+             * 然后另一个开始并发,获取了page2,此时page2也指向最后一个元素
+             * 接着第一个线程发现失效,因此申请了一个新的元素,此时第一个index的page已经发生了变化,并且顺利执行了这次操作
+             * 第二个线程此时获取到page的锁,注意到这个时候index的version由于线程1的更新已经发生了变化,此时变成了2(如果readCache第一次回绕)
+             * 这个时候第二个线程会认为page是有效的,实际上已经失效了
+             *
+             * 一个解决办法是,将地址作为version,这样就不会出现误判的情况
+             *
+             * */
             //注意这里只对pageCache加锁,但是没有对index加锁,所以可能出现index并发的情况
             CONCURRENT::MutexLockGuard guard(page->pageLock);
+
             if (index->cache_version != page->version){
                 // 目前这个version已经无效,需要重新申请一个page
-                page = PageCache::allocReadCache();
+                page = PageCache::allocReadCache(uint64_t(index.get()));
                 IO::getIoContext().loadPage(page, index->file_idx, index->file_offset, index->msg_bytes);
                 index->setPage(page);
                 index->setVersion(page->version);
+
                 continue;
             }else{
+
+
                 break;
             }
         }
 
+
         parseMsgs(index, offset, number, page->mem, msgs);
         // 这里缺少readAhead机制,在linux下有readAhead系统调用可以提前去加载cache,降低延迟
-    }
 
+    }
     return msgs;
 }
 
@@ -166,10 +181,9 @@ void Queue::put(const MemBlock& message){
         IO::getIoContext().flushPage(cur_data_slot_off_, write_page, page_index->file_idx, page_index->file_offset);
 
         // 注意这里更新了version,所以原来index的version已经失效了,读的时候会发现这一点并且重新申请
-        write_page->updateVersion();
         paged_message_indices_.emplace_back(new PageIndex(0, page_index->total_msg_size(), write_page));// 此时file_offset实际上还不确定
+        write_page->updateVersion(uint64_t(paged_message_indices_.back().get()));
         paged_message_indices_.back()->setVersion(write_page->version);
-
         cur_data_slot_off_ = msg_size + 2;
     }else{
         cur_data_slot_off_ += msg_size + 2;
